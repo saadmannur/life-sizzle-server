@@ -12,7 +12,7 @@ const dotenv = require('dotenv');
 dotenv.config()
 
 
-const { MongoClient, ServerApiVersion } = require('mongodb');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const uri = process.env.MONGO_DB_URI;
 
 
@@ -33,7 +33,10 @@ const run = async () => {
         await client.connect();
 
         const db = client.db('life-sizzle');
+        const userCollection = db.collection('user')
+        const sessionCollection = db.collection('session')
         const lessonCollection = db.collection('lessons')
+        const lessonViewsCollection = db.collection("lessonViews");
 
         //token related work
         const verifyToken = async (req, res, next) => {
@@ -68,9 +71,85 @@ const run = async () => {
             next()
         }
 
-        app.post('/api/lessons', async (req, res) => {
+        //verify user role
+        const verifyUser = (req, res, next) => {
+            // console.log(req.user)
+            if (req.user?.role !== 'user') {
+                return res.status(403).send({ message: 'Forbidden Access' })
+            }
+            next()
+        }
+        const verifyAdmin = (req, res, next) => {
+            if (req.user?.role !== 'admin') {
+                return res.status(403).send({ message: 'Forbidden Access' })
+            }
+            next()
+        }
+
+        app.get('/api/lessons', async (req, res) => {
+            const query = {};
+
+            // console.log(req.query.userId, 'from response');
+
+            if (req.query.userId) {
+                query.userId = req.query.userId;
+            }
+            if (req.query.category) {
+                query.category = req.query.category;
+            }
+
+            //browse job related query
+            if (req.query.tone) {
+                query.tone = req.query.tone;
+            }
+            if (req.query.category) {
+                query.category = req.query.category;
+            }
+            if (req.query.search) {
+                // case-insensitive partial match on title
+
+                query.headline = { $regex: req.query.search, $options: 'i' };  //search by only title
+            //     query.$or = [
+            //         { title: { $regex: req.query.search, $options: 'i' } },
+                //         { companyName: { $regex: req.query.search, $options: 'i' } }, // search by multiples items
+            //         { city: { $regex: req.query.search, $options: 'i' } },
+            //         { country: { $regex: req.query.search, $options: 'i' } },
+            //     ]; 
+            }
+
+            //pagination related query
+            if (req.query.page) {
+                const page = req.query.page;
+                const perPage = req.query.perPage || 12;
+                const skipItems = (page - 1) * perPage
+
+                const totalItems = await lessonCollection.countDocuments(query)
+
+                const cursor = lessonCollection.find(query).skip(skipItems).limit(perPage);
+                const lessons = await cursor.sort({ createAt: -1 }).toArray()
+                return res.send({ lessons, totalItems })
+            }
+
+            const result = await lessonCollection.find(query).sort({ createAt: -1 }).toArray();
+            res.send({
+                lessons: result,
+                totalItems: result.length
+            })
+        })
+
+        app.get('/api/lessons/:id', async (req, res) => {
+            const { id } = req.params;
+            // console.log('console response',id);
+            const query = {
+                _id: new ObjectId(id)
+            };
+            const result = await lessonCollection.findOne(query);
+            res.send(result)
+        })
+
+        app.post('/api/lessons', verifyToken, verifyUser,  async (req, res) => {
             const lesson = req.body;
-            console.log(lesson)
+            // console.log(lesson)
             const newLesson = {
                 ...lesson,
                 createAt: new Date(),

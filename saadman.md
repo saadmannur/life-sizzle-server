@@ -33,6 +33,9 @@ const run = async () => {
         await client.connect();
 
         const db = client.db('life-sizzle');
+        const userCollection = db.collection('user')
+        const sessionCollection = db.collection('session')
+        
         const lessonCollection = db.collection('lessons')
 
         //token related work
