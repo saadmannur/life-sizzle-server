@@ -36,7 +36,7 @@ const run = async () => {
         const userCollection = db.collection('user')
         const sessionCollection = db.collection('session')
         const lessonCollection = db.collection('lessons')
-        const lessonViewsCollection = db.collection("lessonViews");
+        const favoriteCollection = db.collection('favorites');
 
         //token related work
         const verifyToken = async (req, res, next) => {
@@ -109,12 +109,12 @@ const run = async () => {
                 // case-insensitive partial match on title
 
                 query.headline = { $regex: req.query.search, $options: 'i' };  //search by only title
-            //     query.$or = [
-            //         { title: { $regex: req.query.search, $options: 'i' } },
+                //     query.$or = [
+                //         { title: { $regex: req.query.search, $options: 'i' } },
                 //         { companyName: { $regex: req.query.search, $options: 'i' } }, // search by multiples items
-            //         { city: { $regex: req.query.search, $options: 'i' } },
-            //         { country: { $regex: req.query.search, $options: 'i' } },
-            //     ]; 
+                //         { city: { $regex: req.query.search, $options: 'i' } },
+                //         { country: { $regex: req.query.search, $options: 'i' } },
+                //     ]; 
             }
 
             //pagination related query
@@ -147,7 +147,119 @@ const run = async () => {
             res.send(result)
         })
 
-        app.post('/api/lessons', verifyToken, verifyUser,  async (req, res) => {
+        app.patch("/api/lessons/:id/like", verifyToken, async (req, res) => {
+
+            const { id } = req.params;
+            const userId = req.user._id.toString();
+            // console.log(req.user);
+
+            const lesson = await lessonCollection.findOne({
+                _id: new ObjectId(id)
+            });
+
+            if (!lesson) {
+                return res.status(404).send({
+                    message: "Lesson not found"
+                });
+            }
+
+            const alreadyLiked = lesson.likes?.includes(userId);
+
+            if (alreadyLiked) {
+
+                await lessonCollection.updateOne(
+                    { _id: new ObjectId(id) },
+                    {
+                        $pull: {
+                            likes: userId
+                        }
+                    }
+                );
+
+                return res.send({
+                    liked: false
+                });
+
+            }
+
+            await lessonCollection.updateOne(
+                { _id: new ObjectId(id) },
+                {
+                    $addToSet: {
+                        likes: userId
+                    }
+                }
+            );
+
+            res.send({
+                liked: true
+            });
+
+        }
+        );
+
+        app.patch("/api/lessons/:id/favorite", verifyToken, async (req, res) => {
+
+            const { id } = req.params;
+
+            const userId = req.user._id.toString();
+
+            const favorite = await favoriteCollection.findOne({
+                lessonId: id,
+                userId
+            });
+
+            if (favorite) {
+
+                await favoriteCollection.deleteOne({
+                    _id: favorite._id
+                });
+
+                return res.send({
+                    saved: false
+                });
+
+            }
+
+            await favoriteCollection.insertOne({
+
+                lessonId: id,
+
+                userId,
+
+                createdAt: new Date()
+
+            });
+
+            res.send({
+                saved: true
+            });
+
+        }
+        );
+        app.get("/api/favorites/check/:lessonId", verifyToken, async (req, res) => {
+
+            const { lessonId } = req.params;
+
+            const userId = req.user._id.toString();
+
+            const favorite = await favoriteCollection.findOne({
+                lessonId,
+                userId
+            });
+
+            const totalItems = await favoriteCollection.countDocuments({lessonId})
+            // console.log(totalItems);
+
+            res.send({
+                saved: !!favorite,
+                totalItems
+            });
+
+        }
+        );
+
+        app.post('/api/lessons', verifyToken, verifyUser, async (req, res) => {
             const lesson = req.body;
             // console.log(lesson)
             const newLesson = {
