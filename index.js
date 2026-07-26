@@ -37,6 +37,7 @@ const run = async () => {
         const sessionCollection = db.collection('session')
         const lessonCollection = db.collection('lessons')
         const favoriteCollection = db.collection('favorites');
+        const reportCollection = db.collection("lessonReports");
 
         //token related work
         const verifyToken = async (req, res, next) => {
@@ -172,6 +173,9 @@ const run = async () => {
                     {
                         $pull: {
                             likes: userId
+                        },
+                        $inc: {
+                            likesCount: -1
                         }
                     }
                 );
@@ -187,6 +191,9 @@ const run = async () => {
                 {
                     $addToSet: {
                         likes: userId
+                    },
+                    $inc: {
+                        likesCount: 1
                     }
                 }
             );
@@ -215,6 +222,17 @@ const run = async () => {
                     _id: favorite._id
                 });
 
+                await lessonCollection.updateOne(
+                    {
+                        _id: new ObjectId(id)
+                    },
+                    {
+                        $inc: {
+                            favoritesCount: -1
+                        }
+                    }
+                )
+
                 return res.send({
                     saved: false
                 });
@@ -230,6 +248,17 @@ const run = async () => {
                 createdAt: new Date()
 
             });
+
+            await lessonCollection.updateOne(
+                {
+                    _id: new ObjectId(id)
+                },
+                {
+                    $inc: {
+                        favoritesCount: 1
+                    }
+                }
+            );
 
             res.send({
                 saved: true
@@ -248,7 +277,7 @@ const run = async () => {
                 userId
             });
 
-            const totalItems = await favoriteCollection.countDocuments({lessonId})
+            const totalItems = await favoriteCollection.countDocuments({ lessonId })
             // console.log(totalItems);
 
             res.send({
@@ -259,12 +288,53 @@ const run = async () => {
         }
         );
 
+        app.post("/api/lesson-reports", verifyToken, async (req, res) => {
+
+            const { lessonId, reason } = req.body;
+
+            const user = req.user;
+
+            const alreadyReported = await reportCollection.findOne({
+                lessonId,
+                reporterId: user._id.toString()
+            });
+
+            if (alreadyReported) {
+                return res.status(400).send({
+                    message: "You already reported this lesson."
+                });
+            }
+
+            const report = {
+                lessonId,
+                reporterId: user._id.toString(),
+                reporterEmail: user.email,
+                reason,
+                status: "pending",
+                createdAt: new Date()
+            };
+
+            await reportCollection.insertOne(report);
+
+            res.send({
+                success: true,
+                message: "Report submitted."
+            });
+
+        });
+
         app.post('/api/lessons', verifyToken, verifyUser, async (req, res) => {
             const lesson = req.body;
             // console.log(lesson)
             const newLesson = {
                 ...lesson,
+                likes: [],
+                likesCount: 0,
+                favoritesCount: 0,
+                isFeatured: false,
+                isReviewed: false,
                 createAt: new Date(),
+                updatedAt: null
             }
             const result = await lessonCollection.insertOne(newLesson);
             res.send(result)
