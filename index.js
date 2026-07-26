@@ -38,6 +38,7 @@ const run = async () => {
         const lessonCollection = db.collection('lessons')
         const favoriteCollection = db.collection('favorites');
         const reportCollection = db.collection("lessonReports");
+        const commentCollection = db.collection("comments");
 
         //token related work
         const verifyToken = async (req, res, next) => {
@@ -148,6 +149,7 @@ const run = async () => {
             res.send(result)
         })
 
+        //like
         app.patch("/api/lessons/:id/like", verifyToken, async (req, res) => {
 
             const { id } = req.params;
@@ -205,6 +207,7 @@ const run = async () => {
         }
         );
 
+        //favorite
         app.patch("/api/lessons/:id/favorite", verifyToken, async (req, res) => {
 
             const { id } = req.params;
@@ -288,6 +291,7 @@ const run = async () => {
         }
         );
 
+        //report
         app.post("/api/lesson-reports", verifyToken, async (req, res) => {
 
             const { lessonId, reason } = req.body;
@@ -319,6 +323,53 @@ const run = async () => {
             res.send({
                 success: true,
                 message: "Report submitted."
+            });
+
+        });
+
+        //comments
+        app.post("/api/comments", verifyToken, async (req, res) => {
+
+            const { lessonId, text } = req.body;
+
+            if (!lessonId || !text?.trim()) {
+                return res.status(400).send({
+                    message: "Lesson ID and comment are required."
+                });
+            }
+
+            const user = req.user;
+
+            const comment = {
+                lessonId,
+                userId: user._id.toString(),
+                userName: user.name,
+                userImage: user.image,
+                text: text.trim(),
+                createdAt: new Date(),
+                updatedAt: null
+            };
+
+            const result = await commentCollection.insertOne(comment);
+
+            res.send({
+                success: true,
+                insertedId: result.insertedId
+            });
+
+        });
+        app.get("/api/comments/:lessonId", async (req, res) => {
+
+            const { lessonId } = req.params;
+
+            const comments = await commentCollection
+                .find({ lessonId })
+                .sort({ createdAt: -1 })
+                .toArray();
+
+            res.send({
+                comments,
+                totalItems: comments.length
             });
 
         });
