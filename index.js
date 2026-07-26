@@ -110,13 +110,12 @@ const run = async () => {
             if (req.query.search) {
                 // case-insensitive partial match on title
 
-                query.headline = { $regex: req.query.search, $options: 'i' };  //search by only title
-                //     query.$or = [
-                //         { title: { $regex: req.query.search, $options: 'i' } },
-                //         { companyName: { $regex: req.query.search, $options: 'i' } }, // search by multiples items
-                //         { city: { $regex: req.query.search, $options: 'i' } },
-                //         { country: { $regex: req.query.search, $options: 'i' } },
-                //     ]; 
+                // query.headline = { $regex: req.query.search, $options: 'i' };  //search by only title
+                query.$or = [
+                    { headline: { $regex: req.query.search, $options: 'i' } },
+                    { tone: { $regex: req.query.search, $options: 'i' } },
+                    { category: { $regex: req.query.search, $options: 'i' } },
+                ];   // search by multiples items
             }
 
             //pagination related query
@@ -317,7 +316,7 @@ const run = async () => {
                         foreignField: "_id",
                         as: "lesson"
                     }
-                }, 
+                },
                 {
                     $unwind: "$lesson"
                 },
@@ -383,7 +382,7 @@ const run = async () => {
             });
 
         });
-        
+
         //report
         app.post("/api/lesson-reports", verifyToken, async (req, res) => {
 
