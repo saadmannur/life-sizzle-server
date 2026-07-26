@@ -290,7 +290,100 @@ const run = async () => {
 
         }
         );
+        app.get("/api/favorites", verifyToken, async (req, res) => {
 
+            const userId = req.user._id.toString();
+
+            const favorites = await favoriteCollection.aggregate([
+
+                {
+                    $match: {
+                        userId
+                    }
+                },
+
+                {
+                    $addFields: {
+                        lessonObjectId: {
+                            $toObjectId: "$lessonId"
+                        }
+                    }
+                },
+
+                {
+                    $lookup: {
+                        from: "lessons",
+                        localField: "lessonObjectId",
+                        foreignField: "_id",
+                        as: "lesson"
+                    }
+                }, 
+                {
+                    $unwind: "$lesson"
+                },
+                {
+                    $replaceRoot: {
+                        newRoot: "$lesson"
+                    }
+                }
+
+            ]).toArray();
+
+            res.send(favorites);
+
+        });
+        app.delete("/api/favorites/:lessonId", verifyToken, async (req, res) => {
+
+            const { lessonId } = req.params;
+
+            const userId = req.user._id.toString();
+
+            const favorite = await favoriteCollection.findOne({
+                lessonId,
+                userId
+            });
+
+            if (!favorite) {
+                return res.status(404).send({
+                    message: "Favorite not found."
+                });
+            }
+
+            await favoriteCollection.deleteOne({
+                _id: favorite._id
+            });
+
+            await lessonCollection.updateOne(
+                {
+                    _id: new ObjectId(lessonId)
+                },
+                {
+                    $inc: {
+                        favoritesCount: -1
+                    }
+                }
+            );
+
+            res.send({
+                success: true,
+                message: "Removed from favorites."
+            });
+
+        });
+        app.get("/api/favorites/count", verifyToken, async (req, res) => {
+
+            const userId = req.user._id.toString();
+
+            const totalItems = await favoriteCollection.countDocuments({
+                userId
+            });
+
+            res.send({
+                totalItems
+            });
+
+        });
+        
         //report
         app.post("/api/lesson-reports", verifyToken, async (req, res) => {
 
@@ -374,6 +467,7 @@ const run = async () => {
 
         });
 
+        //lessons
         app.post('/api/lessons', verifyToken, verifyUser, async (req, res) => {
             const lesson = req.body;
             // console.log(lesson)
@@ -390,6 +484,84 @@ const run = async () => {
             const result = await lessonCollection.insertOne(newLesson);
             res.send(result)
         })
+
+        app.delete("/api/lessons/:id", verifyToken, verifyUser, async (req, res) => {
+
+            const { id } = req.params;
+
+            const lesson = await lessonCollection.findOne({
+                _id: new ObjectId(id)
+            });
+
+            if (!lesson) {
+                return res.status(404).send({
+                    message: "Lesson not found."
+                });
+            }
+
+            if (lesson.userId !== req.user._id.toString()) {
+                return res.status(403).send({
+                    message: "Forbidden Access"
+                });
+            }
+
+            await favoriteCollection.deleteMany({
+                lessonId: id
+            });
+
+            await reportCollection.deleteMany({
+                lessonId: id
+            });
+
+            await lessonCollection.deleteOne({
+                _id: new ObjectId(id)
+            });
+
+            res.send({
+                success: true,
+                message: "Lesson deleted successfully."
+            });
+
+        });
+
+        app.patch("/api/lessons/:id", verifyToken, verifyUser, async (req, res) => {
+
+            const { id } = req.params;
+            // console.log(id, 'console response');
+
+            const lesson = await lessonCollection.findOne({
+                _id: new ObjectId(id)
+            });
+
+            if (!lesson) {
+                return res.status(404).send({
+                    message: "Lesson not found."
+                });
+            }
+
+            if (lesson.userId !== req.user._id.toString()) {
+                return res.status(403).send({
+                    message: "Forbidden Access"
+                });
+            }
+
+            const updatedLesson = req.body;
+
+            const result = await lessonCollection.updateOne(
+                {
+                    _id: new ObjectId(id)
+                },
+                {
+                    $set: {
+                        ...updatedLesson,
+                        updatedAt: new Date()
+                    }
+                }
+            );
+
+            res.send(result);
+
+        });
 
 
 
