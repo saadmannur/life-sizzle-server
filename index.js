@@ -88,6 +88,7 @@ const run = async () => {
             next()
         }
 
+        //lessons
         app.get('/api/lessons', async (req, res) => {
             const query = {};
 
@@ -561,6 +562,249 @@ const run = async () => {
             res.send(result);
 
         });
+
+
+        // For Admin
+
+        //users for admin
+        app.get('/api/users', verifyToken, verifyAdmin, async (req, res) => {
+            const result = await userCollection.find().sort({ createdAt: -1 }).toArray();
+            res.send({
+                users: result,
+                totalUsers: result.length
+            })
+        })
+
+        
+        // Get reported lessons with reporter details using aggregation
+        app.get("/api/reported-lessons", verifyToken, verifyAdmin, async (req, res) => {
+            try {
+                const reportedLessons = await reportCollection.aggregate([
+                    {
+                        $match: { status: "pending" }
+                    },
+                    
+                    {
+                        $addFields: {
+                            lessonObjectId: {
+                                $convert: {
+                                    input: "$lessonId",
+                                    to: "objectId",
+                                    onError: "$lessonId", 
+                                    onNull: "$lessonId"
+                                }
+                            }
+                        }
+                    },
+                   
+                    {
+                        $group: {
+                            _id: "$lessonId",
+                            lessonObjectId: { $first: "$lessonObjectId" },
+                            totalReports: { $sum: 1 },
+                            reports: {
+                                $push: {
+                                    reportId: "$_id",
+                                    reporterId: "$reporterId",
+                                    reporterEmail: "$reporterEmail",
+                                    reason: "$reason",
+                                    status: "$status",
+                                    createdAt: "$createdAt"
+                                }
+                            }
+                        }
+                    },
+                    
+                    {
+                        $lookup: {
+                            from: "lessons",
+                            let: { strId: "$_id", objId: "$lessonObjectId" },
+                            pipeline: [
+                                {
+                                    $match: {
+                                        $expr: {
+                                            $or: [
+                                                { $eq: ["$_id", "$$objId"] },
+                                                { $eq: ["$_id", "$$strId"] }
+                                            ]
+                                        }
+                                    }
+                                }
+                            ],
+                            as: "lessonDetails"
+                        }
+                    },
+                    
+                    {
+                        $unwind: "$lessonDetails"
+                    },
+                   
+                    {
+                        $sort: { totalReports: -1 }
+                    },
+                    
+                    {
+                        $project: {
+                            _id: 0,
+                            lessonId: "$_id",
+                            totalReports: 1,
+                            reports: 1,
+                            lesson: "$lessonDetails"
+                        }
+                    }
+                ]).toArray();
+
+                res.send({
+                    success: true,
+                    totalReportedLessons: reportedLessons.length,
+                    data: reportedLessons
+                });
+            } catch (error) {
+                console.error("Error fetching reported lessons:", error);
+                res.status(500).send({
+                    success: false,
+                    message: "Failed to fetch reported lessons."
+                });
+            }
+        });
+
+        // Get today's created lessons count
+        app.get('/api/today-count/lessons', verifyToken, verifyAdmin, async (req, res) => {
+            try {
+                
+                const startOfToday = new Date();
+                startOfToday.setHours(0, 0, 0, 0);
+
+                const endOfToday = new Date();
+                endOfToday.setHours(23, 59, 59, 999);
+
+                const query = {
+                    createAt: {
+                        $gte: startOfToday,
+                        $lte: endOfToday
+                    }
+                };
+
+                const todayLessonsCount = await lessonCollection.countDocuments(query);
+
+                res.send({
+                    success: true,
+                    todayLessonsCount
+                });
+            } catch (error) {
+                console.error("Error fetching today's lessons count:", error);
+                res.status(500).send({
+                    success: false,
+                    message: "Failed to fetch today's lessons count."
+                });
+            }
+        });
+
+        //Lesson Growth Stats
+        app.get('/api/admin/stats/lesson-growth', verifyToken, verifyAdmin, async (req, res) => {
+            try {
+                const sixMonthsAgo = new Date();
+                sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
+                sixMonthsAgo.setDate(1);
+                sixMonthsAgo.setHours(0, 0, 0, 0);
+
+                const growth = await lessonCollection.aggregate([
+                    {
+                        $match: { createAt: { $gte: sixMonthsAgo } }
+                    },
+                    {
+                        $group: {
+                            _id: {
+                                year: { $year: "$createAt" },
+                                month: { $month: "$createAt" }
+                            },
+                            count: { $sum: 1 }
+                        }
+                    },
+                    { $sort: { "_id.year": 1, "_id.month": 1 } }
+                ]).toArray();
+
+                // month formatting
+                const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+                const formattedData = growth.map(item => ({
+                    label: months[item._id.month - 1],
+                    count: item.count
+                }));
+
+                res.send(formattedData);
+            } catch (error) {
+                res.status(500).send({ message: "Error fetching lesson growth" });
+            }
+        });
+
+        // User Growth Stats
+        app.get('/api/admin/stats/user-growth', verifyToken, verifyAdmin, async (req, res) => {
+            try {
+                const sixMonthsAgo = new Date();
+                sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
+                sixMonthsAgo.setDate(1);
+                sixMonthsAgo.setHours(0, 0, 0, 0);
+
+                const growth = await userCollection.aggregate([
+                    {
+                        $match: { createdAt: { $gte: sixMonthsAgo } }
+                    },
+                    {
+                        $group: {
+                            _id: {
+                                year: { $year: "$createdAt" },
+                                month: { $month: "$createdAt" }
+                            },
+                            count: { $sum: 1 }
+                        }
+                    },
+                    { $sort: { "_id.year": 1, "_id.month": 1 } }
+                ]).toArray();
+
+                const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+                const formattedData = growth.map(item => ({
+                    label: months[item._id.month - 1],
+                    count: item.count
+                }));
+
+                res.send(formattedData);
+            } catch (error) {
+                res.status(500).send({ message: "Error fetching user growth" });
+            }
+        });
+
+        // Top 5 Contributors
+        app.get('/api/admin/stats/top-contributors', verifyToken, verifyAdmin, async (req, res) => {
+            try {
+                const topContributors = await lessonCollection.aggregate([
+                    {
+                        $group: {
+                            _id: "$userId",
+                            userName: { $first: "$userName" },
+                            userEmail: { $first: "$userEmail" },
+                            userImage: { $first: "$userImage" },
+                            lessons: { $sum: 1 }
+                        }
+                    },
+                    { $sort: { lessons: -1 } },
+                    { $limit: 5 },
+                    {
+                        $project: {
+                            _id: 0,
+                            name: { $ifNull: ["$userName", "User"] },
+                            email: { $ifNull: ["$userEmail", ""] },
+                            image: { $ifNull: ["$userImage", ""] },
+                            lessons: 1
+                        }
+                    }
+                ]).toArray();
+
+                res.send(topContributors);
+            } catch (error) {
+                res.status(500).send({ message: "Error fetching top contributors" });
+            }
+        });
+
 
 
 
