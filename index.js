@@ -588,7 +588,7 @@ const run = async () => {
                 totalUsers: result.length
             })
         })
- 
+
         // Get reported lessons with reporter details using aggregation
         app.get("/api/reported-lessons", verifyToken, verifyAdmin, async (req, res) => {
             try {
@@ -596,20 +596,20 @@ const run = async () => {
                     {
                         $match: { status: "pending" }
                     },
-                    
+
                     {
                         $addFields: {
                             lessonObjectId: {
                                 $convert: {
                                     input: "$lessonId",
                                     to: "objectId",
-                                    onError: "$lessonId", 
+                                    onError: "$lessonId",
                                     onNull: "$lessonId"
                                 }
                             }
                         }
                     },
-                   
+
                     {
                         $group: {
                             _id: "$lessonId",
@@ -627,7 +627,7 @@ const run = async () => {
                             }
                         }
                     },
-                    
+
                     {
                         $lookup: {
                             from: "lessons",
@@ -647,15 +647,15 @@ const run = async () => {
                             as: "lessonDetails"
                         }
                     },
-                    
+
                     {
                         $unwind: "$lessonDetails"
                     },
-                   
+
                     {
                         $sort: { totalReports: -1 }
                     },
-                    
+
                     {
                         $project: {
                             _id: 0,
@@ -684,7 +684,7 @@ const run = async () => {
         // Get today's created lessons count
         app.get('/api/today-count/lessons', verifyToken, verifyAdmin, async (req, res) => {
             try {
-                
+
                 const startOfToday = new Date();
                 startOfToday.setHours(0, 0, 0, 0);
 
@@ -817,6 +817,108 @@ const run = async () => {
                 res.status(500).send({ message: "Error fetching top contributors" });
             }
         });
+
+        // delete lesson
+        app.delete("/api/admin/lessons/:id", verifyToken, verifyAdmin, async (req, res) => {
+
+            const { id } = req.params;
+            console.log(id);
+
+            const lesson = await lessonCollection.findOne({
+                _id: new ObjectId(id)
+            });
+
+            if (!lesson) {
+                return res.status(404).send({
+                    message: "Lesson not found."
+                });
+            }
+
+            await favoriteCollection.deleteMany({
+                lessonId: id
+            });
+
+            await reportCollection.deleteMany({
+                lessonId: id
+            });
+
+            await lessonCollection.deleteOne({
+                _id: new ObjectId(id)
+            });
+
+            res.send({
+                success: true,
+                message: "Lesson deleted successfully."
+            });
+
+        });
+
+        //add to featured
+        app.patch("/api/admin/lessons/:id/featured", verifyToken, verifyAdmin, async (req, res) => {
+            const { id } = req.params;
+            const { isFeatured } = req.body;
+
+            const result = await lessonCollection.updateOne(
+                { _id: new ObjectId(id) },
+                {
+                    $set: {
+                        isFeatured,
+                        updatedAt: new Date(),
+                    },
+                }
+            );
+
+            res.send({
+                success: true,
+                result,
+            });
+        });
+
+        //add to preview
+        app.patch("/api/admin/lessons/:id/reviewed", verifyToken, verifyAdmin, async (req, res) => {
+            const { id } = req.params;
+            const { isReviewed } = req.body;
+
+            const result = await lessonCollection.updateOne(
+                { _id: new ObjectId(id) },
+                {
+                    $set: {
+                        isReviewed,
+                        updatedAt: new Date(),
+                    },
+                }
+            );
+
+            res.send({
+                success: true,
+                result,
+            });
+        });
+
+        //delete report from report collection
+        app.delete("/api/admin/reported-lessons/:lessonId", verifyToken, verifyAdmin, async (req, res) => {
+                try {
+                    const { lessonId } = req.params;
+
+                    const result = await reportCollection.deleteMany({
+                        lessonId,
+                    });
+
+                    res.send({
+                        success: true,
+                        message: "Reports cleared successfully.",
+                        deletedCount: result.deletedCount,
+                    });
+                } catch (error) {
+                    console.log(error);
+
+                    res.status(500).send({
+                        success: false,
+                        message: "Failed to clear reports.",
+                    });
+                }
+            }
+        );
 
 
 
