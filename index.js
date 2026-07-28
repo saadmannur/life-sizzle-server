@@ -565,17 +565,30 @@ const run = async () => {
 
 
         // For Admin
-
         //users for admin
         app.get('/api/users', verifyToken, verifyAdmin, async (req, res) => {
+            const query = {};
+
+            //pagination related query
+            if (req.query.page) {
+                const page = req.query.page;
+                const perPage = req.query.perPage || 12;
+                const skipItems = (page - 1) * perPage
+
+                const totalUsers = await userCollection.countDocuments(query)
+
+                const cursor = userCollection.find(query).skip(skipItems).limit(perPage);
+                const users = await cursor.sort({ createdAt: -1 }).toArray()
+                return res.send({ users, totalUsers })
+            }
+
             const result = await userCollection.find().sort({ createdAt: -1 }).toArray();
             res.send({
                 users: result,
                 totalUsers: result.length
             })
         })
-
-        
+ 
         // Get reported lessons with reporter details using aggregation
         app.get("/api/reported-lessons", verifyToken, verifyAdmin, async (req, res) => {
             try {
