@@ -827,7 +827,7 @@ const run = async () => {
                     { $limit: 5 },
                     {
                         $project: {
-                            _id: 0,
+                            _id: 1,
                             name: { $ifNull: ["$userName", "User"] },
                             email: { $ifNull: ["$userEmail", ""] },
                             image: { $ifNull: ["$userImage", ""] },
