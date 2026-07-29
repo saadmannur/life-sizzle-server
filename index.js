@@ -811,7 +811,7 @@ const run = async () => {
         });
 
         // Top 5 Contributors
-        app.get('/api/admin/stats/top-contributors', verifyToken, verifyAdmin, async (req, res) => {
+        app.get('/api/admin/stats/top-contributors',  async (req, res) => {
             try {
                 const topContributors = await lessonCollection.aggregate([
                     {
@@ -824,7 +824,7 @@ const run = async () => {
                         }
                     },
                     { $sort: { lessons: -1 } },
-                    { $limit: 5 },
+                    { $limit: 6 },
                     {
                         $project: {
                             _id: 1,
