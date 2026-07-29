@@ -39,6 +39,7 @@ const run = async () => {
         const favoriteCollection = db.collection('favorites');
         const reportCollection = db.collection("lessonReports");
         const commentCollection = db.collection("comments");
+        const subscriptionCollection = db.collection("subscriptions");
 
         //token related work
         const verifyToken = async (req, res, next) => {
@@ -562,6 +563,29 @@ const run = async () => {
             res.send(result);
 
         });
+
+        //subscriptions
+        app.post("/api/subscriptions", async (req, res) => {
+            const data = req.body;
+            const subInfo = {
+                ...data,
+                createdAt: new Date(),
+            }
+
+            const result = await subscriptionCollection.insertOne(subInfo);
+            
+            const filter = {email: data.email}
+            const updateDocument = {
+                $set: {
+                    plan: data.plan,
+                    isPremium: true,
+                }
+            }
+
+            const updatedResult = await userCollection.updateOne(filter, updateDocument);
+            res.send(updatedResult)
+        })
+
 
 
         // For Admin
